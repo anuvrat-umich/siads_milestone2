@@ -1,7 +1,7 @@
 """
     prophet_e2e.py
     Author: Anuvrat Chaturvedi
-    Date: 26th April 2020
+    Date: 1st June 2024
     Purpose: End-to-end model fitting and plotting for Prophet model for the given stock
 """
 
@@ -19,19 +19,25 @@ from sklearn.metrics import (
     mean_absolute_percentage_error,
 )
 from prophet.utilities import regressor_coefficients
+import logging
 
 
 def prophet_e2e(
     close_prices_adj_top: pd.DataFrame,
     selected_stock: str,
+    model: Prophet = None,
     test_size: int = 30,
     save_charts: bool = True,
     save_metrics: bool = True,
     output_dir: str = "../prophet_charts/",
+    batch_id: str = pd.Timestamp.now(),
     verbose: bool = True,
 ):
     # Print the selected stock
-    print(f"Now predicting for: {selected_stock}")
+    # print(f"Now predicting for: {selected_stock}")
+
+    # Disabling the logging for the Prophet model
+    logging.getLogger("cmdstanpy").setLevel(logging.CRITICAL)
 
     # Adding the backslash to the output directory if not present to make the location name consistent
     if output_dir[-1] != "/":
@@ -57,10 +63,11 @@ def prophet_e2e(
     train = df_train_test[~df_train_test.ds.isin(test_indices)]
     test = df_train_test[df_train_test.ds.isin(test_indices)]
 
-    # Define the Prophet model
-    model = Prophet(
-        # mcmc_samples=300, seasonality_mode="multiplicative", yearly_seasonality=2
-    )
+    # Define the Prophet model if none is passed
+    if model is None:
+        print("Model not passed. Using default Prophet model")
+        model = Prophet()
+
     # Fit the defined model
     model.fit(train)
 
@@ -128,7 +135,7 @@ def prophet_e2e(
                     "evs",
                     "r2",
                     "mape",
-                    "timestamp",
+                    "batch_id",
                 ]
             )
 
@@ -146,7 +153,7 @@ def prophet_e2e(
                         "mape": [
                             mean_absolute_percentage_error(test.y, forecast_test.yhat)
                         ],
-                        "timestamp": [pd.Timestamp.now()],
+                        "batch_id": batch_id,
                     }
                 ),
             ],
@@ -183,6 +190,13 @@ if __name__ == "__main__":
     )
     parser.add_argument("selected_stock", type=str, help="Stock to fit the model on")
     parser.add_argument(
+        "-m",
+        "--model",
+        type=Prophet,
+        default=Prophet(),
+        help="Estimator to use for the model fitting",
+    )
+    parser.add_argument(
         "-t",
         "--test_size",
         type=int,
@@ -208,21 +222,30 @@ if __name__ == "__main__":
         action="store_true",
         help="Save metrics?",
     )
+    parser.add_argument(
+        "-b",
+        "--batch_id",
+        type=str,
+        default=str(pd.Timestamp.now()),
+        help="Batch ID for the run",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode?")
     args = parser.parse_args()
 
-    print(args.close_prices_adj_top)
+    # print(args.close_prices_adj_top)
 
     # Load the data
     close_prices_adj_top_df = pd.read_pickle(args.close_prices_adj_top)
 
     # Run the model
     prophet_e2e(
-        close_prices_adj_top_df,
-        args.selected_stock,
+        close_prices_adj_top=close_prices_adj_top_df,
+        selected_stock=args.selected_stock,
+        model=args.model,
         test_size=args.test_size,
         save_charts=args.save_charts,
         save_metrics=args.save_metrics,
         output_dir=args.output_directory,
+        batch_id=args.batch_id,
         verbose=args.verbose,
     )
